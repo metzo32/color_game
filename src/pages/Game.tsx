@@ -103,12 +103,20 @@ const RANK_HIGHLIGHTS: Record<number, { badge: string; glow: string; label: stri
 };
 
 // 플레이어 픽을 기반으로 라운드 결과 즉시 계산 (dispatch와 별개)
+// hostPickOverride: 호스트의 색상 (state 업데이트 대기 없이 즉시 계산하기 위함)
 function computeRoundResult(
   round: number,
   targetColor: RGB,
-  players: Player[]
+  players: Player[],
+  hostPickOverride?: { playerId: string; color: RGB }
 ): RoundResult {
   const picks: Record<string, RGB> = {};
+
+  // 호스트 픽 우선 추가 (state 업데이트 전에 호출되므로)
+  if (hostPickOverride) {
+    picks[hostPickOverride.playerId] = hostPickOverride.color;
+  }
+
   players.forEach((p) => {
     if (p.currentPick && p.hasSubmitted) {
       picks[p.id] = p.currentPick;
@@ -217,15 +225,23 @@ export default function Game() {
 
       case 'COLOR_SELECTION': {
         // 색깔 선택 종료 → 호스트 픽 자동 제출 → 즉시 결과 계산 → 비교 화면(5s)
-        const hostPick = currentPickColorRef.current;
+        let hostPick = currentPickColorRef.current;
+        // 선택하지 않으면 기본값(회색) 사용
+        if (!hostPick) {
+          hostPick = { r: 128, g: 128, b: 128 };
+        }
         const hostAlreadySubmitted = !!s.players.find((p) => p.id === myPlayerId)?.hasSubmitted;
-        if (hostPick && !hostAlreadySubmitted) {
+        if (!hostAlreadySubmitted) {
           submitColorPick(myPlayerId, hostPick);
         }
-        // stateRef를 다시 참조하여 업데이트된 state로 계산
-        const updatedState = stateRef.current;
-        if (updatedState.targetColor) {
-          const result = computeRoundResult(updatedState.currentRound, updatedState.targetColor, updatedState.players);
+        // 호스트 픽을 명시적으로 전달하여 state 업데이트 대기 없이 즉시 계산
+        if (s.targetColor) {
+          const result = computeRoundResult(
+            s.currentRound,
+            s.targetColor,
+            s.players,
+            { playerId: myPlayerId, color: hostPick }
+          );
           setLastRoundResult(result);
           sendToAllRef.current('ROUND_RESULT', result);
         }
@@ -317,11 +333,15 @@ export default function Game() {
             currentRound?: number;
           };
 
-          // 게스트: TIME_UP 수신 시 현재 색상 자동 제출
-          if (!isHost && payload.phase === 'TIME_UP') {
-            const color = currentPickColorRef.current;
+          // 게스트: COMPARISON 진입 시 현재 색상 자동 제출
+          if (!isHost && payload.phase === 'COMPARISON') {
+            let color = currentPickColorRef.current;
+            // 선택하지 않으면 기본값(회색) 사용
+            if (!color) {
+              color = { r: 128, g: 128, b: 128 };
+            }
             const alreadySubmitted = !!stateRef.current.players.find((p) => p.id === myPlayerId)?.hasSubmitted;
-            if (color && !alreadySubmitted) {
+            if (!alreadySubmitted) {
               submitColorPick(myPlayerId, color);
               if (hostConnRef.current?.open) {
                 hostConnRef.current.send(
