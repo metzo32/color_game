@@ -31,7 +31,7 @@ export default function Lobby() {
   const hostConnRef = useRef<DataConnection | null>(null);
 
   // sendToAll을 ref로 관리하여 onMessage 콜백 내 순환 의존성 방지
-  const sendToAllRef = useRef<(type: PeerMessage['type'], payload: unknown) => void>(() => {});
+  const sendToAllRef = useRef<(type: PeerMessage['type'], payload: unknown) => void>(() => { });
 
   const playerInfo = loadPlayerInfo();
   const inviteLink = gameId ? generateInviteLink(gameId) : '';
@@ -99,45 +99,55 @@ export default function Lobby() {
     sendToAllRef.current = sendToAll;
   }, [sendToAll]);
 
-  // 내 플레이어 ID 설정 및 플레이어 목록 초기화
+  // 호스트: PeerJS 연결 전에 gameId로 즉시 플레이어 등록
+  // 호스트의 peer ID는 항상 gameId로 고정되므로 PeerJS가 준비될 때까지 기다릴 필요 없음
   useEffect(() => {
-    if (!myPeerId || !playerInfo || !gameId) return;
-    setMyPlayerId(myPeerId);
-    // 게임 페이지에서 내 ID를 읽을 수 있도록 저장 (호스트/게스트 모두)
-    sessionStorage.setItem('myPlayerId', myPeerId);
+    if (!isHost || !playerInfo || !gameId) return;
+    const hostId = gameId;
+    setMyPlayerId(hostId);
+    sessionStorage.setItem('myPlayerId', hostId);
+    const me: Player = {
+      id: hostId,
+      nickname: playerInfo.nickname,
+      profileColor: playerInfo.profileColor,
+      score: 0,
+      isHost: true,
+      isReady: false,
+      hasSubmitted: false,
+    };
+    setPlayers([me]);
+    setStatus('대기 중 - 플레이어를 기다리는 중...');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, gameId]);
 
+  // 게스트: PeerJS 준비 후 호스트에 연결
+  useEffect(() => {
+    if (isHost || !myPeerId || !playerInfo || !gameId) return;
+    setMyPlayerId(myPeerId);
+    sessionStorage.setItem('myPlayerId', myPeerId);
     const me: Player = {
       id: myPeerId,
       nickname: playerInfo.nickname,
       profileColor: playerInfo.profileColor,
       score: 0,
-      isHost,
+      isHost: false,
       isReady: false,
       hasSubmitted: false,
     };
-
-    if (isHost) {
-      // 호스트: 자신을 플레이어 목록에 추가
-      setPlayers([me]);
-      setStatus('대기 중 - 플레이어를 기다리는 중...');
-    } else {
-      // 게스트: 호스트에 연결
-      connectToHost(gameId)
-        .then((conn) => {
-          hostConnRef.current = conn;
-          setStatus('호스트 연결 완료');
-          // 자신의 정보를 호스트에게 전송
-          const msg = createPeerMessage('PLAYER_JOIN', me, myPeerId);
-          conn.send(msg);
-          setPlayers((prev) => {
-            if (prev.find((p) => p.id === me.id)) return prev;
-            return [...prev, me];
-          });
-        })
-        .catch(() => {
-          setPeerError('호스트에 연결할 수 없습니다. 초대 링크를 확인해주세요.');
+    connectToHost(gameId)
+      .then((conn) => {
+        hostConnRef.current = conn;
+        setStatus('호스트 연결 완료');
+        const msg = createPeerMessage('PLAYER_JOIN', me, myPeerId);
+        conn.send(msg);
+        setPlayers((prev) => {
+          if (prev.find((p) => p.id === me.id)) return prev;
+          return [...prev, me];
         });
-    }
+      })
+      .catch(() => {
+        setPeerError('호스트에 연결할 수 없습니다. 초대 링크를 확인해주세요.');
+      });
   // 마운트 시 1회만 실행
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myPeerId, isHost, gameId]);
@@ -181,13 +191,13 @@ export default function Lobby() {
     );
   }
 
-  // Peer 연결이 아직 준비되지 않았을 때 로딩 화면 표시 (호스트/게스트 공통)
-  if (!isReady) {
+  // 게스트만 PeerJS 준비를 기다림 (호스트는 gameId로 즉시 시작)
+  if (!isReady && !isHost) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-sm flex flex-col items-center gap-6">
           {/* 방 ID */}
-          <p className="text-gray-600 text-xs font-mono">방 ID: {gameId}</p>
+          {/* <p className="text-gray-600 text-xs font-mono">방 ID: {gameId}</p> */}
 
           {/* 스피너 */}
           <div className="relative w-16 h-16">
@@ -247,7 +257,7 @@ export default function Lobby() {
         {/* 헤더 */}
         <div className="text-center">
           <h1 className="text-3xl font-black text-white mb-1">대기실</h1>
-          <p className="text-gray-500 text-sm font-mono">방 ID: {gameId}</p>
+          {/* <p className="text-gray-500 text-sm font-mono">방 ID: {gameId}</p> */}
         </div>
 
         {/* 연결 상태 */}
@@ -272,11 +282,10 @@ export default function Lobby() {
             />
             <button
               onClick={handleCopyLink}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                copied
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${copied
                   ? 'bg-green-600 text-white'
                   : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-              }`}
+                }`}
             >
               {copied ? '복사됨!' : '복사'}
             </button>

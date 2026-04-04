@@ -21,9 +21,16 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
     const myPlayerId = sessionStorage.getItem('myPlayerId') ?? '';
     const playerInfo = sessionStorage.getItem('playerInfo');
 
+    console.log('[loadGameData] playersRaw:', playersRaw);
+    console.log('[loadGameData] myPlayerId:', myPlayerId);
+    console.log('[loadGameData] playerInfo:', playerInfo);
+
     // gamePlayers가 없으면 게스트이거나 단독 플레이 처음 시작
     if (!playersRaw) {
-      if (!playerInfo || !myPlayerId) return null;
+      if (!playerInfo || !myPlayerId) {
+        console.log('[loadGameData] Missing playerInfo or myPlayerId, returning null');
+        return null;
+      }
       // 게스트: playerInfo만으로 자신 정보 구성 (플레이어 목록은 호스트 sync로 받음)
       // 단독 플레이: isHost=true로 처리
       // 게스트와 단독의 차이는 URL의 host 파라미터로 구분할 수 없으므로
@@ -39,14 +46,22 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
         isReady: true,
         hasSubmitted: false,
       };
+      console.log('[loadGameData] Guest mode, returning:', { players: [me], myPlayerId, isHost: false });
       return { players: [me], myPlayerId, isHost: false };
     }
 
-    if (!myPlayerId) return null;
+    if (!myPlayerId) {
+      console.log('[loadGameData] Missing myPlayerId, returning null');
+      return null;
+    }
 
     const players = JSON.parse(playersRaw) as Player[];
     const myPlayerData = players.find((p) => p.id === myPlayerId);
     const isHost = myPlayerData?.isHost ?? false;
+
+    console.log('[loadGameData] players:', players);
+    console.log('[loadGameData] myPlayerData:', myPlayerData);
+    console.log('[loadGameData] isHost:', isHost);
 
     // 플레이어 목록이 비어있고 playerInfo만 있는 경우 (단독 플레이)
     if (players.length === 0 && playerInfo) {
@@ -60,11 +75,14 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
         isReady: true,
         hasSubmitted: false,
       };
+      console.log('[loadGameData] Single player (empty players array), returning:', { players: [singlePlayer], myPlayerId: singlePlayer.id, isHost: true });
       return { players: [singlePlayer], myPlayerId: singlePlayer.id, isHost: true };
     }
 
+    console.log('[loadGameData] Normal case, returning:', { players, myPlayerId, isHost });
     return { players, myPlayerId, isHost };
-  } catch {
+  } catch (error) {
+    console.error('[loadGameData] Error:', error);
     return null;
   }
 }
@@ -73,8 +91,8 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
 const PHASE_DURATIONS: Partial<Record<GamePhase, number>> = {
   COLOR_REVEAL: 3,
   COLOR_SELECTION: 10,
-  TIME_UP: 2,
-  COMPARISON: 5,
+  TIME_UP: 3,
+  COMPARISON: 3,
   SCORING: 3,
 };
 
@@ -129,10 +147,17 @@ export default function Game() {
   // PeerJS 공개 서버(0.peerjs.com) 불필요한 WebSocket 연결을 방지
   const isSinglePlayer = isHost && (gameDataRef.current?.players.length ?? 0) <= 1;
 
+  // 디버깅 로그
+  useEffect(() => {
+    console.log('[Game] gameDataRef.current:', gameDataRef.current);
+    console.log('[Game] isHost:', isHost);
+    console.log('[Game] players.length:', gameDataRef.current?.players.length);
+    console.log('[Game] isSinglePlayer:', isSinglePlayer);
+  }, []);
+
   const {
     state,
     myPlayer,
-    allSubmitted,
     addPlayer,
     setPhase,
     startNextRound,
@@ -152,6 +177,16 @@ export default function Game() {
   // 라운드 결과: COMPARISON/SCORING 렌더링에 사용
   // COLOR_SELECTION 종료 시점에 계산하여 저장
   const [lastRoundResult, setLastRoundResult] = useState<RoundResult | null>(null);
+  // onPeerConnect 콜백에서 최신 lastRoundResult 접근을 위한 ref
+  const lastRoundResultRef = useRef<RoundResult | null>(null);
+  useEffect(() => { lastRoundResultRef.current = lastRoundResult; }, [lastRoundResult]);
+
+  // 멀티플레이: 첫 라운드 타겟 컬러를 ref로 보관 (연결 확인 후 전환 시 사용)
+  const firstTargetRef = useRef<RGB | null>(null);
+
+  // COLOR_SELECTION 중 실시간 선택 색상 (state + ref 쌍으로 관리)
+  const [currentPickColor, setCurrentPickColor] = useState<RGB | null>(null);
+  const currentPickColorRef = useRef<RGB | null>(null);
 
   // sendToAll을 ref로 관리하여 stale closure 방지
   const sendToAllRef = useRef<(type: PeerMessage['type'], payload: unknown) => void>(() => {});
@@ -182,40 +217,39 @@ export default function Game() {
         break;
 
       case 'COLOR_SELECTION': {
-        // 색깔 선택 종료 → 라운드 결과 즉시 계산 → 시간 종료 메시지(2s)
-        if (s.targetColor) {
-          const result = computeRoundResult(s.currentRound, s.targetColor, s.players);
-          setLastRoundResult(result);
-          // 게스트에게 결과 브로드캐스트 (COMPARISON에서 바로 보여주기 위해)
-          sendToAllRef.current('ROUND_RESULT', result);
+        // 색깔 선택 종료 → 호스트 픽 자동 제출 → 시간 종료(3s)
+        // (게스트는 TIME_UP PHASE_CHANGE를 받으면 자동 제출)
+        const hostPick = currentPickColorRef.current;
+        const hostAlreadySubmitted = !!s.players.find((p) => p.id === myPlayerId)?.hasSubmitted;
+        if (hostPick && !hostAlreadySubmitted) {
+          submitColorPick(myPlayerId, hostPick);
         }
-        transitionToPhase('TIME_UP', PHASE_DURATIONS.TIME_UP ?? 2);
+        transitionToPhase('TIME_UP', PHASE_DURATIONS.TIME_UP ?? 3);
         break;
       }
 
-      case 'TIME_UP':
-        // 시간 종료(2s) → 결과 비교(5s)
-        transitionToPhase('COMPARISON', PHASE_DURATIONS.COMPARISON ?? 5);
+      case 'TIME_UP': {
+        // 시간 종료(3s) 후 결과 계산 → 결과 비교(3s)
+        // 게스트 제출이 TIME_UP 3초 동안 도착했을 것
+        if (s.targetColor) {
+          const result = computeRoundResult(s.currentRound, s.targetColor, s.players);
+          setLastRoundResult(result);
+          sendToAllRef.current('ROUND_RESULT', result);
+        }
+        transitionToPhase('COMPARISON', PHASE_DURATIONS.COMPARISON ?? 3);
         break;
+      }
 
-      case 'COMPARISON':
-        // 결과 비교(5s) → 점수 계산(3s)
-        // calculateRound dispatch: state.roundResults에 반영
+      case 'COMPARISON': {
+        // 모든 컬러 표시(3s) → 점수 반영 후 다음 라운드
         calculateRound();
-        transitionToPhase('SCORING', PHASE_DURATIONS.SCORING ?? 3);
-        break;
-
-      case 'SCORING':
-        // 점수 표시(3s) → 다음 라운드 또는 종료
         if (s.currentRound >= s.totalRounds) {
           transitionToPhase('FINISHED', 60);
         } else {
-          // 다음 라운드: 새 targetColor 생성 후 플레이어 초기화
           const nextTarget = randomRGB();
           const nextRound = s.currentRound + 1;
           syncState({ currentRound: nextRound, targetColor: nextTarget });
-          startNextRound(); // 플레이어 hasSubmitted 초기화
-          // 게스트에게 새 라운드 정보 포함 브로드캐스트
+          startNextRound();
           phaseRef.current = 'COLOR_REVEAL';
           setPhase('COLOR_REVEAL');
           setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
@@ -228,11 +262,12 @@ export default function Game() {
           });
         }
         break;
+      }
 
       default:
         break;
     }
-  }, [isHost, transitionToPhase, calculateRound, syncState, startNextRound, setPhase]);
+  }, [isHost, myPlayerId, transitionToPhase, calculateRound, syncState, startNextRound, setPhase, submitColorPick]);
 
   // 타이머 훅: resetKey가 바뀌면 duration부터 재시작
   const { timeLeft } = useTimer({
@@ -242,21 +277,37 @@ export default function Game() {
     resetKey: timerKey,
   });
 
-  // 모든 플레이어가 제출하면 즉시 COLOR_SELECTION 종료 (호스트 전용)
-  useEffect(() => {
-    if (isHost && allSubmitted && state.phase === 'COLOR_SELECTION') {
-      advancePhase();
-    }
-  }, [allSubmitted, isHost, state.phase, advancePhase]);
 
   // PeerJS 훅
   // isSinglePlayer=true이면 Peer 인스턴스 생성 자체를 건너뜀 (WebSocket 연결 에러 방지)
-  const { sendToAll, connectToHost } = usePeer({
+  const { sendToAll, connectToHost, connections } = usePeer({
     peerId: isHost && gameId ? gameId : undefined,
     disabled: isSinglePlayer,
 
+    onPeerConnect: useCallback((conn: DataConnection) => {
+      // 새 게스트가 접속하면 현재 게임 상태를 즉시 전송 (WAITING 탈출)
+      if (!isHost) return;
+      const s = stateRef.current;
+      conn.send(createPeerMessage('GAME_STATE_SYNC', {
+        phase: s.phase,
+        currentRound: s.currentRound,
+        targetColor: s.targetColor,
+        players: s.players,
+      }, myPlayerId));
+      if (lastRoundResultRef.current) {
+        conn.send(createPeerMessage('ROUND_RESULT', lastRoundResultRef.current, myPlayerId));
+      }
+    }, [isHost, myPlayerId]),
+
     onMessage: useCallback((msg: PeerMessage, _conn: DataConnection) => {
       switch (msg.type) {
+        case 'PLAYER_JOIN': {
+          // 호스트: 게스트 플레이어 추가
+          const player = msg.payload as Player;
+          addPlayer(player);
+          break;
+        }
+
         case 'COLOR_PICK': {
           // 호스트: 게스트의 픽 수신
           const { playerId, color } = msg.payload as { playerId: string; color: RGB };
@@ -272,6 +323,21 @@ export default function Game() {
             targetColor?: RGB;
             currentRound?: number;
           };
+
+          // 게스트: TIME_UP 수신 시 현재 색상 자동 제출
+          if (!isHost && payload.phase === 'TIME_UP') {
+            const color = currentPickColorRef.current;
+            const alreadySubmitted = !!stateRef.current.players.find((p) => p.id === myPlayerId)?.hasSubmitted;
+            if (color && !alreadySubmitted) {
+              submitColorPick(myPlayerId, color);
+              if (hostConnRef.current?.open) {
+                hostConnRef.current.send(
+                  createPeerMessage('COLOR_PICK', { playerId: myPlayerId, color }, myPlayerId)
+                );
+              }
+            }
+          }
+
           phaseRef.current = payload.phase;
           setPhase(payload.phase);
           const dur = payload.duration ?? (PHASE_DURATIONS[payload.phase] ?? 10);
@@ -297,13 +363,20 @@ export default function Game() {
         case 'GAME_STATE_SYNC': {
           const partial = msg.payload as Partial<typeof state>;
           syncState(partial);
+          // 게스트: 페이즈 정보가 포함된 경우 phaseRef와 타이머도 동기화
+          if (partial.phase && partial.phase !== phaseRef.current) {
+            phaseRef.current = partial.phase;
+            const dur = PHASE_DURATIONS[partial.phase] ?? 10;
+            setTimerDuration(dur);
+            setTimerKey((k) => k + 1);
+          }
           break;
         }
 
         default:
           break;
       }
-    }, [submitColorPick, setPhase, syncState]),
+    }, [addPlayer, submitColorPick, setPhase, syncState]),
 
     onPeerDisconnect: useCallback((peerId: string) => {
       if (!isHost && peerId === gameId) {
@@ -321,25 +394,74 @@ export default function Game() {
   // 초기 설정: 플레이어 추가 + 호스트 첫 라운드 시작
   useEffect(() => {
     const gameData = gameDataRef.current;
+
+    // gameData가 null이고 isHost면 싱글 플레이로 강제 초기화
+    if (!gameData && isHost) {
+      console.log('[Game] gameData is null but isHost=true, initializing as single player');
+      const firstTarget = randomRGB();
+      syncState({ currentRound: 1, targetColor: firstTarget });
+      phaseRef.current = 'COLOR_REVEAL';
+      setPhase('COLOR_REVEAL');
+      setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
+      setTimerKey((k) => k + 1);
+      return;
+    }
+
     if (!gameData) return;
 
     gameData.players.forEach((p) => addPlayer(p));
 
     if (isHost) {
       const firstTarget = randomRGB();
-      syncState({
-        currentRound: 1,
-        targetColor: firstTarget,
-        phase: 'COLOR_REVEAL',
-        phaseStartTime: Date.now(),
-      });
-      phaseRef.current = 'COLOR_REVEAL';
-      setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
-      setTimerKey((k) => k + 1);
+      syncState({ currentRound: 1, targetColor: firstTarget });
+
+      if (isSinglePlayer) {
+        // 싱글플레이: PeerJS 없이 즉시 COLOR_REVEAL 타이머 시작
+        phaseRef.current = 'COLOR_REVEAL';
+        setPhase('COLOR_REVEAL');
+        setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
+        setTimerKey((k) => k + 1);
+      } else {
+        // 멀티플레이: WAITING 유지, 모든 게스트 연결 확인 후 전환
+        firstTargetRef.current = firstTarget;
+        // phase 'WAITING' 유지 — 연결 감시 useEffect가 COLOR_REVEAL로 전환
+      }
     }
   // 마운트 시 1회만 실행
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 멀티플레이 전용: 예상 게스트 수 (호스트 본인 제외)
+  const expectedGuestCount = isHost && !isSinglePlayer
+    ? Math.max(0, (gameDataRef.current?.players.length ?? 1) - 1)
+    : 0;
+
+  // 멀티플레이: 모든 게스트가 연결되면 WAITING → COLOR_REVEAL 전환
+  useEffect(() => {
+    if (!isHost || isSinglePlayer || state.phase !== 'WAITING') return;
+    if (connections.length < expectedGuestCount) return;
+    const target = firstTargetRef.current;
+    if (!target) return;
+    transitionToPhase('COLOR_REVEAL', PHASE_DURATIONS.COLOR_REVEAL ?? 3, {
+      targetColor: target,
+      currentRound: 1,
+    });
+  }, [connections.length, isHost, isSinglePlayer, state.phase, expectedGuestCount, transitionToPhase]);
+
+  // 멀티플레이: 8초 타임아웃 — 일부 게스트가 연결 안 돼도 게임 시작
+  useEffect(() => {
+    if (!isHost || isSinglePlayer || state.phase !== 'WAITING') return;
+    const tid = setTimeout(() => {
+      if (phaseRef.current !== 'WAITING') return;
+      const target = firstTargetRef.current;
+      if (!target) return;
+      transitionToPhase('COLOR_REVEAL', PHASE_DURATIONS.COLOR_REVEAL ?? 3, {
+        targetColor: target,
+        currentRound: 1,
+      });
+    }, 8000);
+    return () => clearTimeout(tid);
+  }, [isHost, isSinglePlayer, state.phase, transitionToPhase]);
 
   // 게스트: 게임 페이지 직접 접근 시 호스트에 연결
   useEffect(() => {
@@ -366,14 +488,11 @@ export default function Game() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost, gameId]);
 
-  // 내 컬러 픽 제출
-  const handleColorPick = useCallback((color: RGB) => {
-    submitColorPick(myPlayerId, color);
-    if (!isHost && hostConnRef.current?.open) {
-      const msg = createPeerMessage('COLOR_PICK', { playerId: myPlayerId, color }, myPlayerId);
-      hostConnRef.current.send(msg);
-    }
-  }, [myPlayerId, isHost, submitColorPick]);
+  // 컬러피커 실시간 색상 변경
+  const handleColorChange = useCallback((color: RGB) => {
+    setCurrentPickColor(color);
+    currentPickColorRef.current = color;
+  }, []);
 
   // 게임 종료 → 결과 페이지 이동
   useEffect(() => {
@@ -422,6 +541,25 @@ export default function Game() {
         )}
       </header>
 
+      {/* 2라운드부터 우상단 현재 랭킹 */}
+      {state.currentRound >= 2 && phase !== 'WAITING' && phase !== 'FINISHED' && (
+        <div className="fixed top-20 right-4 z-30 bg-gray-900/90 backdrop-blur-sm border border-gray-700 rounded-xl p-3 min-w-[150px]">
+          <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-2 font-semibold">순위</p>
+          {[...state.players]
+            .sort((a, b) => b.score - a.score)
+            .map((player, i) => (
+              <div
+                key={player.id}
+                className={`flex items-center gap-2 py-0.5 ${player.id === myPlayerId ? 'text-indigo-400' : 'text-gray-300'}`}
+              >
+                <span className="text-xs w-3 shrink-0 text-gray-500">{i + 1}</span>
+                <span className="text-xs flex-1 truncate max-w-[80px]">{player.nickname}</span>
+                <span className="text-xs font-bold">{player.score}pt</span>
+              </div>
+            ))}
+        </div>
+      )}
+
       {/* 메인 게임 영역 */}
       <main className="flex-1 flex flex-col items-center justify-center p-6 gap-6 overflow-auto">
 
@@ -441,31 +579,31 @@ export default function Game() {
           </div>
         )}
 
-        {/* COLOR_SELECTION: 컬러 피커로 선택 */}
+        {/* COLOR_SELECTION: 실시간 컬러 프리뷰 + 컬러피커 */}
         {phase === 'COLOR_SELECTION' && (
-          <div className="flex flex-col items-center gap-4 w-full">
-            <p className="text-gray-400 text-base">방금 본 색깔을 선택하세요</p>
-            <div className="w-[min(800px,90vw)] h-[min(400px,50vh)] rounded-2xl border-2 border-dashed border-gray-700 bg-gray-900/50 flex items-center justify-center">
-              {myHasSubmitted ? (
-                <div className="text-center">
-                  <p className="text-green-400 font-bold text-xl mb-1">제출 완료!</p>
-                  <p className="text-gray-500 text-sm">다른 플레이어를 기다리는 중...</p>
-                </div>
-              ) : (
-                <p className="text-gray-600 text-sm">우측 하단 색상 피커로 선택하세요</p>
-              )}
-            </div>
-            {/* 제출 전까지 fixed 오버레이 컬러 피커 표시 */}
-            {!myHasSubmitted && (
-              <ColorPicker onSubmit={handleColorPick} disabled={false} />
-            )}
+          <div className="flex flex-col items-center gap-5 w-full">
+            <p className="text-gray-400 text-base">방금 본 색깔을 선택하세요 — 타이머 종료 시 자동 제출</p>
+            {/* 실시간 컬러 프리뷰 */}
+            <div
+              className="w-[min(480px,85vw)] h-[min(300px,35vh)] rounded-2xl border-2 border-gray-700 transition-colors duration-75 shadow-lg"
+              style={{
+                backgroundColor: currentPickColor
+                  ? `rgb(${currentPickColor.r},${currentPickColor.g},${currentPickColor.b})`
+                  : '#1f2937',
+              }}
+            />
+            <ColorPicker
+              onChange={handleColorChange}
+              hideSubmit={true}
+              disabled={false}
+            />
           </div>
         )}
 
-        {/* TIME_UP: 시간 종료 메시지 */}
+        {/* TIME_UP: 시간 종료 3초 */}
         {phase === 'TIME_UP' && (
           <div className="flex flex-col items-center justify-center gap-4">
-            <div className="bg-red-600/20 border border-red-500 text-red-400 px-16 py-8 rounded-2xl animate-bounce">
+            <div className="bg-red-600/20 border border-red-500 text-red-400 px-16 py-8 rounded-2xl">
               <p className="text-5xl font-black text-center tracking-widest">시간 종료!</p>
             </div>
           </div>

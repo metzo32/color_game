@@ -70,13 +70,17 @@ const HUE_BAR_H = 20;
 // Props
 // ─────────────────────────────────────────────
 interface ColorPickerProps {
-  onSubmit: (color: RGB) => void;
+  onSubmit?: (color: RGB) => void;
+  onChange?: (color: RGB) => void;
+  hideSubmit?: boolean;
   disabled?: boolean;
   initialColor?: RGB;
 }
 
 export default function ColorPicker({
   onSubmit,
+  onChange,
+  hideSubmit = false,
   disabled = false,
   initialColor = { r: 128, g: 128, b: 128 },
 }: ColorPickerProps) {
@@ -88,6 +92,11 @@ export default function ColorPicker({
   // 현재 RGB (렌더마다 HSV에서 계산)
   const color: RGB = hsvToRgb(hsv);
   const hexCode = rgbToHex(color);
+
+  // hsv 변경 시 부모에게 실시간 알림
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  useEffect(() => { onChangeRef.current?.(color); }, [hsv]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 팔레트 캔버스 ref
   const paletteRef = useRef<HTMLCanvasElement>(null);
@@ -258,7 +267,7 @@ export default function ColorPicker({
   const handleSubmit = useCallback(() => {
     if (disabled || submitted) return;
     setSubmitted(true);
-    onSubmit(color);
+    onSubmit?.(color);
   }, [color, disabled, submitted, onSubmit]);
 
   // 팔레트 위 커서 원의 위치 (픽셀)
@@ -361,22 +370,24 @@ export default function ColorPicker({
           </div>
         </div>
 
-        {/* ── 제출 버튼 ── */}
-        <button
-          onClick={handleSubmit}
-          disabled={disabled || submitted}
-          className={`
-            w-full py-3 rounded-xl font-bold text-base transition-all duration-200
-            ${submitted
-              ? 'bg-green-600 text-white cursor-not-allowed'
-              : disabled
-              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-              : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-lg shadow-indigo-900/40'
-            }
-          `}
-        >
-          {submitted ? '제출 완료!' : '컬러 선택 확정'}
-        </button>
+        {/* ── 제출 버튼 (hideSubmit=false일 때만 표시) ── */}
+        {!hideSubmit && (
+          <button
+            onClick={handleSubmit}
+            disabled={disabled || submitted}
+            className={`
+              w-full py-3 rounded-xl font-bold text-base transition-all duration-200
+              ${submitted
+                ? 'bg-green-600 text-white cursor-not-allowed'
+                : disabled
+                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-lg shadow-indigo-900/40'
+              }
+            `}
+          >
+            {submitted ? '제출 완료!' : '컬러 선택 확정'}
+          </button>
+        )}
 
       </div>
     </div>

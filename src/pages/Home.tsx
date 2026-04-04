@@ -12,7 +12,7 @@ const PRESET_COLORS = [
   '#a855f7', // 보라
 ];
 
-type Mode = 'idle' | 'create' | 'join';
+type Mode = 'idle' | 'solo' | 'multi' | 'create' | 'join';
 
 interface FormState {
   nickname: string;
@@ -50,6 +50,35 @@ export default function Home() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleSoloPlay = useCallback(() => {
+    if (!validate()) return;
+
+    const playerId = crypto.randomUUID();
+    const gameId = generateRoomId();
+    const playerInfo = {
+      nickname: form.nickname.trim(),
+      profileColor: form.profileColor,
+    };
+
+    // 싱글 플레이 데이터 저장
+    sessionStorage.setItem('playerInfo', JSON.stringify(playerInfo));
+    sessionStorage.setItem('myPlayerId', playerId);
+    sessionStorage.setItem('gamePlayers', JSON.stringify([
+      {
+        id: playerId,
+        nickname: playerInfo.nickname,
+        profileColor: playerInfo.profileColor,
+        score: 0,
+        isHost: true,
+        isReady: true,
+        hasSubmitted: false,
+      },
+    ]));
+
+    navigate(`/game/${gameId}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, navigate]);
+
   const handlePlay = useCallback(() => {
     if (!validate()) return;
 
@@ -64,7 +93,7 @@ export default function Home() {
       // 새 방 ID 생성 후 로비로 이동
       const roomId = generateRoomId();
       navigate(`/lobby/${roomId}?host=true`);
-    } else {
+    } else if (mode === 'join') {
       // 초대 코드에서 방 ID 추출
       let roomId = form.inviteCode.trim();
       // 초대 링크 전체가 입력된 경우 ID만 추출
@@ -97,8 +126,26 @@ export default function Home() {
           </p>
         </div>
 
-        {/* 모드 선택 버튼 */}
+        {/* 게임 모드 선택 (최초) */}
         {mode === 'idle' && (
+          <div className="flex flex-col gap-3 w-full">
+            <button
+              onClick={() => handleModeChange('solo')}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-lg shadow-indigo-900/40"
+            >
+              혼자하기
+            </button>
+            <button
+              onClick={() => handleModeChange('multi')}
+              className="w-full py-4 bg-gray-800 hover:bg-gray-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all border border-gray-700"
+            >
+              함께하기
+            </button>
+          </div>
+        )}
+
+        {/* 함께하기 모드 선택 */}
+        {mode === 'multi' && (
           <div className="flex flex-col gap-3 w-full">
             <button
               onClick={() => handleModeChange('create')}
@@ -112,19 +159,25 @@ export default function Home() {
             >
               게임 참여하기
             </button>
+            <button
+              onClick={() => handleModeChange('idle')}
+              className="w-full py-4 bg-gray-900 hover:bg-gray-800 active:scale-95 text-gray-300 font-bold text-lg rounded-2xl transition-all border border-gray-700"
+            >
+              뒤로
+            </button>
           </div>
         )}
 
         {/* 폼 영역 */}
-        {mode !== 'idle' && (
+        {(mode === 'solo' || mode === 'create' || mode === 'join') && (
           <div className="w-full bg-gray-900/90 border border-gray-800 rounded-2xl p-6 flex flex-col gap-5 shadow-2xl">
             {/* 폼 헤더 */}
             <div className="flex items-center justify-between">
               <h2 className="text-white font-bold text-lg">
-                {mode === 'create' ? '게임 만들기' : '게임 참여하기'}
+                {mode === 'solo' ? '혼자하기' : (mode === 'create' ? '게임 만들기' : '게임 참여하기')}
               </h2>
               <button
-                onClick={() => handleModeChange('idle')}
+                onClick={() => handleModeChange(mode === 'solo' ? 'idle' : 'multi')}
                 className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
               >
                 취소
@@ -208,10 +261,10 @@ export default function Home() {
 
             {/* 플레이 버튼 */}
             <button
-              onClick={handlePlay}
+              onClick={mode === 'solo' ? handleSoloPlay : handlePlay}
               className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-base rounded-xl transition-all shadow-lg shadow-indigo-900/40 mt-1"
             >
-              {mode === 'create' ? '방 만들기' : '참여하기'}
+              {mode === 'solo' ? '게임 시작' : (mode === 'create' ? '방 만들기' : '참여하기')}
             </button>
           </div>
         )}

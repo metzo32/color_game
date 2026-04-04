@@ -24,7 +24,9 @@ export function useTimer({
   resetKey,
 }: UseTimerOptions): UseTimerReturn {
   const [timeLeft, setTimeLeft] = useState(duration);
-  const [isRunning, setIsRunning] = useState(autoStart);
+  // Initialize isRunning to false; resetKey effect will set it to autoStart
+  const [isRunning, setIsRunning] = useState(false);
+
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onCompleteRef = useRef(onComplete);
@@ -64,18 +66,20 @@ export function useTimer({
   useEffect(() => {
     clearTimer();
     setTimeLeft(duration);
-    // 먼저 false로 강제 전환하여 isRunning effect를 반드시 재실행
     setIsRunning(false);
-    if (autoStart) {
-      // 다음 microtask에서 true로 전환 — React batching으로 인해
-      // 같은 flush에 false→true가 묶이더라도 두 값이 다르므로 effect 재실행 보장
-      // queueMicrotask 대신 setTimeout(0)으로 안전하게 처리
-      const id = setTimeout(() => setIsRunning(true), 0);
-      return () => clearTimeout(id);
+
+    if (!autoStart) {
+      return;
     }
-  // duration과 resetKey가 바뀔 때만 실행 (autoStart는 의도적으로 제외)
+
+    // 다음 microtask에서 true로 전환 — React batching으로 인해
+    // 같은 flush에 false→true가 묶이더라도 두 값이 다르므로 effect 재실행 보장
+    // queueMicrotask 대신 setTimeout(0)으로 안전하게 처리
+    const id = setTimeout(() => setIsRunning(true), 0);
+    return () => clearTimeout(id);
+  // duration과 resetKey가 바뀔 때만 실행
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetKey, duration]);
+  }, [resetKey, duration, autoStart]);
 
   // isRunning이 true가 되면 interval 생성, false가 되면 정리
   useEffect(() => {

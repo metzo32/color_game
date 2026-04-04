@@ -7,7 +7,9 @@
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
       "Bash(npx vite:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m 'Fix timer not counting down - initialize isRunning to false:*)"
     ]
   }
 }
