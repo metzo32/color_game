@@ -415,6 +415,7 @@ export default function Game() {
 
   // 초기 설정: 플레이어 추가 + 호스트 첫 라운드 시작
   useEffect(() => {
+    console.log('[Game] 초기화 useEffect 실행', { gameData: gameDataRef.current, isHost, isSinglePlayer });
     const gameData = gameDataRef.current;
 
     // gameData가 null이고 isHost면 싱글 플레이로 강제 초기화
@@ -430,26 +431,35 @@ export default function Game() {
       return;
     }
 
-    if (!gameData) return;
+    if (!gameData) {
+      console.log('[Game] gameData가 없어서 return');
+      return;
+    }
 
+    console.log('[Game] gameData가 있음, addPlayer 호출');
     gameData.players.forEach((p) => addPlayer(p));
 
     if (isHost) {
+      console.log('[Game] isHost=true, 첫 라운드 초기화');
       const firstTarget = randomRGB();
       syncState({ currentRound: 1, targetColor: firstTarget });
 
       if (isSinglePlayer) {
         // 싱글플레이: PeerJS 없이 즉시 COLOR_REVEAL 타이머 시작
+        console.log('[Game] isSinglePlayer=true, COLOR_REVEAL 설정');
         phaseRef.current = 'COLOR_REVEAL';
         setPhase('COLOR_REVEAL');
         setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
         setTimerKey((k) => k + 1);
         console.log('[Game] 싱글플레이 초기화: COLOR_REVEAL');
       } else {
+        console.log('[Game] isSinglePlayer=false, 멀티플레이 모드');
         // 멀티플레이: WAITING 유지, 모든 게스트 연결 확인 후 전환
         firstTargetRef.current = firstTarget;
         // phase 'WAITING' 유지 — 연결 감시 useEffect가 COLOR_REVEAL로 전환
       }
+    } else {
+      console.log('[Game] isHost=false, 게스트 모드');
     }
   // 마운트 시 1회만 실행
   // eslint-disable-next-line react-hooks/exhaustive-deps
