@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import type { DataConnection } from 'peerjs';
 import type { Player, RGB, GamePhase, PeerMessage, RoundResult } from '../types/game';
 import { usePeer } from '../hooks/usePeer';
-import { useTimer } from '../hooks/useTimer';
 import { useGame } from '../hooks/useGame';
 import ColorBox from '../components/ColorBox';
 import ColorPicker from '../components/ColorPicker';
@@ -165,14 +164,15 @@ export default function Game() {
     syncState,
   } = useGame(gameId ?? '', myPlayerId);
 
-  // state.phase 변화만 추적
-  useEffect(() => {
-    console.log('[Game] ★ phase:', state.phase);
-  }, [state.phase]);
 
-  // 타이머 duration과 key를 분리 관리
-  const [timerDuration, setTimerDuration] = useState(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
-  const [timerKey, setTimerKey] = useState(0);
+  // 타이머 직접 관리 (setTimeout + setInterval)
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [timerTotal, setTimerTotal] = useState(0);
+
+  // advancePhase를 ref로 추적 (stale closure 방지)
+  const advancePhaseRef = useRef<() => void>(() => {});
 
   // 현재 페이즈를 ref로도 관리 (stale closure 방지)
   const phaseRef = useRef<GamePhase>('WAITING');
@@ -199,38 +199,49 @@ export default function Game() {
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // 페이즈 전환 헬퍼: 타이머 리셋 + 게스트 브로드캐스트
+  // 타이머 시작 헬퍼
+  const startPhaseTimer = useCallback((duration: number) => {
+    // 이전 타이머 취소
+    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+
+    setTimeLeft(duration);
+    setTimerTotal(duration);
+
+    // 1초마다 timeLeft 감소
+    countdownIntervalRef.current = setInterval(() => {
+      setTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+
+    // duration 후 advancePhase 호출
+    phaseTimerRef.current = setTimeout(() => {
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      advancePhaseRef.current();
+    }, duration * 1000);
+  }, []);
+
+  // 페이즈 전환 헬퍼: 타이머 시작 + 게스트 브로드캐스트
   const transitionToPhase = useCallback((next: GamePhase, duration: number, extra?: Record<string, unknown>) => {
-    console.log('[transitionToPhase] →', next);
     phaseRef.current = next;
     setPhase(next);
-    setTimerDuration(duration);
-    setTimerKey((k) => k + 1);
+    startPhaseTimer(duration);
     sendToAllRef.current('PHASE_CHANGE', { phase: next, duration, ...extra });
-  }, [setPhase]);
+  }, [setPhase, startPhaseTimer]);
 
   // 페이즈 전환 로직 (호스트 전용)
   const advancePhase = useCallback(() => {
-    if (!isHost) {
-      console.log('[advancePhase] not host, return');
-      return;
-    }
+    if (!isHost) return;
     const current = phaseRef.current;
     const s = stateRef.current;
-
-    console.log('[advancePhase] current:', current, 'isHost:', isHost);
 
     switch (current) {
       case 'COLOR_REVEAL':
         // 색깔 공개(3s) → 색깔 선택(10s)
-        console.log('[advancePhase] COLOR_REVEAL 케이스 진입');
         transitionToPhase('COLOR_SELECTION', PHASE_DURATIONS.COLOR_SELECTION ?? 10);
-        console.log('[advancePhase] transitionToPhase 호출 완료');
         break;
 
       case 'COLOR_SELECTION': {
         // 색깔 선택 종료 → 호스트 픽 자동 제출 → 즉시 결과 계산 → 비교 화면(5s)
-        console.log('[advancePhase] COLOR_SELECTION 케이스 진입');
         let hostPick = currentPickColorRef.current;
         // 선택하지 않으면 기본값(회색) 사용
         if (!hostPick) {
@@ -252,12 +263,11 @@ export default function Game() {
           sendToAllRef.current('ROUND_RESULT', result);
         }
         transitionToPhase('COMPARISON', PHASE_DURATIONS.COMPARISON ?? 5);
-        console.log('[advancePhase] COMPARISON 전환 호출');
         break;
       }
 
       case 'COMPARISON': {
-        // 모든 컬러 표시(3s) → 점수 반영 후 다음 라운드
+        // 모든 컬러 표시(5s) → 점수 반영 후 다음 라운드
         calculateRound();
         if (s.currentRound >= s.totalRounds) {
           transitionToPhase('FINISHED', 60);
@@ -268,8 +278,7 @@ export default function Game() {
           startNextRound();
           phaseRef.current = 'COLOR_REVEAL';
           setPhase('COLOR_REVEAL');
-          setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
-          setTimerKey((k) => k + 1);
+          startPhaseTimer(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
           sendToAllRef.current('PHASE_CHANGE', {
             phase: 'COLOR_REVEAL',
             duration: PHASE_DURATIONS.COLOR_REVEAL ?? 3,
@@ -285,14 +294,10 @@ export default function Game() {
     }
   }, [isHost, myPlayerId, transitionToPhase, calculateRound, syncState, startNextRound, setPhase, submitColorPick]);
 
-  // 타이머 훅: resetKey가 바뀌면 duration부터 재시작
-  const { timeLeft } = useTimer({
-    duration: timerDuration,
-    onComplete: advancePhase,
-    autoStart: true,
-    resetKey: timerKey,
-  });
-
+  // advancePhaseRef 동기화
+  useEffect(() => {
+    advancePhaseRef.current = advancePhase;
+  }, [advancePhase]);
 
   // PeerJS 훅
   // isSinglePlayer=true이면 Peer 인스턴스 생성 자체를 건너뜀 (WebSocket 연결 에러 방지)
@@ -361,8 +366,7 @@ export default function Game() {
           phaseRef.current = payload.phase;
           setPhase(payload.phase);
           const dur = payload.duration ?? (PHASE_DURATIONS[payload.phase] ?? 10);
-          setTimerDuration(dur);
-          setTimerKey((k) => k + 1);
+          startPhaseTimer(dur);
 
           // 새 라운드 시작 데이터 동기화
           if (payload.targetColor !== undefined || payload.currentRound !== undefined) {
@@ -387,8 +391,7 @@ export default function Game() {
           if (partial.phase && partial.phase !== phaseRef.current) {
             phaseRef.current = partial.phase;
             const dur = PHASE_DURATIONS[partial.phase] ?? 10;
-            setTimerDuration(dur);
-            setTimerKey((k) => k + 1);
+            startPhaseTimer(dur);
           }
           break;
         }
@@ -413,51 +416,36 @@ export default function Game() {
 
   // 초기 설정: 플레이어 추가 + 호스트 첫 라운드 시작
   useEffect(() => {
-    console.log('[Game] 초기화 useEffect 실행', { gameData: gameDataRef.current, isHost, isSinglePlayer });
     const gameData = gameDataRef.current;
 
     // gameData가 null이고 isHost면 싱글 플레이로 강제 초기화
     if (!gameData && isHost) {
-      console.log('[Game] gameData is null but isHost=true, initializing as single player');
       const firstTarget = randomRGB();
       syncState({ currentRound: 1, targetColor: firstTarget });
       phaseRef.current = 'COLOR_REVEAL';
       setPhase('COLOR_REVEAL');
-      setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
-      setTimerKey((k) => k + 1);
-      console.log('[Game] 초기화 완료: COLOR_REVEAL', { timerKey: 1 });
+      startPhaseTimer(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
       return;
     }
 
-    if (!gameData) {
-      console.log('[Game] gameData가 없어서 return');
-      return;
-    }
+    if (!gameData) return;
 
-    console.log('[Game] gameData가 있음, addPlayer 호출');
     gameData.players.forEach((p) => addPlayer(p));
 
     if (isHost) {
-      console.log('[Game] isHost=true, 첫 라운드 초기화');
       const firstTarget = randomRGB();
       syncState({ currentRound: 1, targetColor: firstTarget });
 
       if (isSinglePlayer) {
         // 싱글플레이: PeerJS 없이 즉시 COLOR_REVEAL 타이머 시작
-        console.log('[Game] isSinglePlayer=true, COLOR_REVEAL 설정');
         phaseRef.current = 'COLOR_REVEAL';
         setPhase('COLOR_REVEAL');
-        setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
-        setTimerKey((k) => k + 1);
-        console.log('[Game] 싱글플레이 초기화: COLOR_REVEAL');
+        startPhaseTimer(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
       } else {
-        console.log('[Game] isSinglePlayer=false, 멀티플레이 모드');
         // 멀티플레이: WAITING 유지, 모든 게스트 연결 확인 후 전환
         firstTargetRef.current = firstTarget;
         // phase 'WAITING' 유지 — 연결 감시 useEffect가 COLOR_REVEAL로 전환
       }
-    } else {
-      console.log('[Game] isHost=false, 게스트 모드');
     }
   // 마운트 시 1회만 실행
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -537,7 +525,6 @@ export default function Game() {
 
   const phase = state.phase;
   const targetColor = state.targetColor;
-  const myHasSubmitted = myPlayer?.hasSubmitted ?? false;
 
   // COMPARISON/SCORING에서 사용할 라운드 결과
   // state.roundResults에 이미 반영됐으면 그것 우선, 없으면 lastRoundResult 사용
@@ -565,7 +552,7 @@ export default function Game() {
         {phase !== 'FINISHED' && phase !== 'WAITING' ? (
           <Timer
             timeLeft={timeLeft}
-            total={timerDuration}
+            total={timerTotal}
             isTimeUp={false}
           />
         ) : (
