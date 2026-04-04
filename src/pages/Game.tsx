@@ -178,6 +178,11 @@ export default function Game() {
     console.log('[Game] state.phase changed:', state.phase);
   }, [state.phase]);
 
+  // state 전체 변화 추적
+  useEffect(() => {
+    console.log('[Game] state 전체 변경:', state);
+  }, [state]);
+
   // 타이머 duration과 key를 분리 관리
   const [timerDuration, setTimerDuration] = useState(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
   const [timerKey, setTimerKey] = useState(0);
@@ -209,8 +214,10 @@ export default function Game() {
 
   // 페이즈 전환 헬퍼: 타이머 리셋 + 게스트 브로드캐스트
   const transitionToPhase = useCallback((next: GamePhase, duration: number, extra?: Record<string, unknown>) => {
+    console.log('[transitionToPhase] 호출:', next);
     phaseRef.current = next;
     setPhase(next);
+    console.log('[transitionToPhase] setPhase 호출 완료:', next);
     setTimerDuration(duration);
     setTimerKey((k) => k + 1);
     sendToAllRef.current('PHASE_CHANGE', { phase: next, duration, ...extra });
