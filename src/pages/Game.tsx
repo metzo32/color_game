@@ -91,8 +91,7 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
 const PHASE_DURATIONS: Partial<Record<GamePhase, number>> = {
   COLOR_REVEAL: 3,
   COLOR_SELECTION: 10,
-  TIME_UP: 3,
-  COMPARISON: 3,
+  COMPARISON: 5,
   SCORING: 3,
 };
 
@@ -217,26 +216,20 @@ export default function Game() {
         break;
 
       case 'COLOR_SELECTION': {
-        // 색깔 선택 종료 → 호스트 픽 자동 제출 → 시간 종료(3s)
-        // (게스트는 TIME_UP PHASE_CHANGE를 받으면 자동 제출)
+        // 색깔 선택 종료 → 호스트 픽 자동 제출 → 즉시 결과 계산 → 비교 화면(5s)
         const hostPick = currentPickColorRef.current;
         const hostAlreadySubmitted = !!s.players.find((p) => p.id === myPlayerId)?.hasSubmitted;
         if (hostPick && !hostAlreadySubmitted) {
           submitColorPick(myPlayerId, hostPick);
         }
-        transitionToPhase('TIME_UP', PHASE_DURATIONS.TIME_UP ?? 3);
-        break;
-      }
-
-      case 'TIME_UP': {
-        // 시간 종료(3s) 후 결과 계산 → 결과 비교(3s)
-        // 게스트 제출이 TIME_UP 3초 동안 도착했을 것
-        if (s.targetColor) {
-          const result = computeRoundResult(s.currentRound, s.targetColor, s.players);
+        // stateRef를 다시 참조하여 업데이트된 state로 계산
+        const updatedState = stateRef.current;
+        if (updatedState.targetColor) {
+          const result = computeRoundResult(updatedState.currentRound, updatedState.targetColor, updatedState.players);
           setLastRoundResult(result);
           sendToAllRef.current('ROUND_RESULT', result);
         }
-        transitionToPhase('COMPARISON', PHASE_DURATIONS.COMPARISON ?? 3);
+        transitionToPhase('COMPARISON', PHASE_DURATIONS.COMPARISON ?? 5);
         break;
       }
 
@@ -529,8 +522,8 @@ export default function Game() {
 
         <PhaseLabel phase={phase} />
 
-        {/* 타이머: TIME_UP, FINISHED, WAITING일 때 숨김 */}
-        {phase !== 'TIME_UP' && phase !== 'FINISHED' && phase !== 'WAITING' ? (
+        {/* 타이머: FINISHED, WAITING일 때 숨김 */}
+        {phase !== 'FINISHED' && phase !== 'WAITING' ? (
           <Timer
             timeLeft={timeLeft}
             total={timerDuration}
@@ -600,14 +593,6 @@ export default function Game() {
           </div>
         )}
 
-        {/* TIME_UP: 시간 종료 3초 */}
-        {phase === 'TIME_UP' && (
-          <div className="flex flex-col items-center justify-center gap-4">
-            <div className="bg-red-600/20 border border-red-500 text-red-400 px-16 py-8 rounded-2xl">
-              <p className="text-5xl font-black text-center tracking-widest">시간 종료!</p>
-            </div>
-          </div>
-        )}
 
         {/* COMPARISON: 결과 비교 그리드 */}
         {phase === 'COMPARISON' && targetColor && displayRoundResult && (
@@ -772,7 +757,7 @@ function PhaseLabel({ phase }: { phase: GamePhase }) {
     WAITING:         { text: '대기 중',      color: 'text-gray-400' },
     COLOR_REVEAL:    { text: '색깔 공개',    color: 'text-blue-400' },
     COLOR_SELECTION: { text: '색깔 선택',    color: 'text-indigo-400' },
-    TIME_UP:         { text: '시간 종료',    color: 'text-red-400' },
+    TIME_UP:         { text: '결과 비교',    color: 'text-yellow-400' }, // 미사용 (호환성)
     COMPARISON:      { text: '결과 비교',    color: 'text-yellow-400' },
     SCORING:         { text: '점수 계산',    color: 'text-green-400' },
     NEXT_ROUND:      { text: '다음 라운드',  color: 'text-purple-400' },

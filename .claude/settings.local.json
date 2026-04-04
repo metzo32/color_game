@@ -9,7 +9,8 @@
       "Bash(npx vite:*)",
       "Bash(npm run:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m 'Fix timer not counting down - initialize isRunning to false:*)"
+      "Bash(git commit -m 'Fix timer not counting down - initialize isRunning to false:*)",
+      "Bash(git commit -m '게임 플로우 변경: TIME_UP 단계 제거:*)"
     ]
   }
 }
