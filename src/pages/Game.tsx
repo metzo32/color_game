@@ -217,14 +217,18 @@ export default function Game() {
     const current = phaseRef.current;
     const s = stateRef.current;
 
+    console.log('[advancePhase] current phase:', current);
+
     switch (current) {
       case 'COLOR_REVEAL':
         // 색깔 공개(3s) → 색깔 선택(10s)
+        console.log('[advancePhase] COLOR_REVEAL → COLOR_SELECTION');
         transitionToPhase('COLOR_SELECTION', PHASE_DURATIONS.COLOR_SELECTION ?? 10);
         break;
 
       case 'COLOR_SELECTION': {
         // 색깔 선택 종료 → 호스트 픽 자동 제출 → 즉시 결과 계산 → 비교 화면(5s)
+        console.log('[advancePhase] COLOR_SELECTION → COMPARISON');
         let hostPick = currentPickColorRef.current;
         // 선택하지 않으면 기본값(회색) 사용
         if (!hostPick) {
