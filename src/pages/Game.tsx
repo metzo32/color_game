@@ -173,6 +173,11 @@ export default function Game() {
     syncState,
   } = useGame(gameId ?? '', myPlayerId);
 
+  // state.phase 변화 추적
+  useEffect(() => {
+    console.log('[Game] state.phase changed:', state.phase);
+  }, [state.phase]);
+
   // 타이머 duration과 key를 분리 관리
   const [timerDuration, setTimerDuration] = useState(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
   const [timerKey, setTimerKey] = useState(0);
@@ -421,6 +426,7 @@ export default function Game() {
       setPhase('COLOR_REVEAL');
       setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
       setTimerKey((k) => k + 1);
+      console.log('[Game] 초기화 완료: COLOR_REVEAL', { timerKey: 1 });
       return;
     }
 
@@ -438,6 +444,7 @@ export default function Game() {
         setPhase('COLOR_REVEAL');
         setTimerDuration(PHASE_DURATIONS.COLOR_REVEAL ?? 3);
         setTimerKey((k) => k + 1);
+        console.log('[Game] 싱글플레이 초기화: COLOR_REVEAL');
       } else {
         // 멀티플레이: WAITING 유지, 모든 게스트 연결 확인 후 전환
         firstTargetRef.current = firstTarget;

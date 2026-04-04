@@ -12,7 +12,8 @@
       "Bash(git commit -m 'Fix timer not counting down - initialize isRunning to false:*)",
       "Bash(git commit -m '게임 플로우 변경: TIME_UP 단계 제거:*)",
       "Bash(git commit -m 'COLOR_SELECTION 단계 명확히 하기: state 동기화 문제 해결:*)",
-      "Bash(git commit -m '디버깅 로그 추가: advancePhase 순서 추적:*)"
+      "Bash(git commit -m '디버깅 로그 추가: advancePhase 순서 추적:*)",
+      "Bash(git commit -m '디버깅: 초기화 및 페이즈 변화 로그 추가:*)"
     ]
   }
 }
