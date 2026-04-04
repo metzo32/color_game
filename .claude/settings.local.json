@@ -16,7 +16,8 @@
       "Bash(git commit -m '디버깅: 초기화 및 페이즈 변화 로그 추가:*)",
       "Bash(git commit -m '디버깅: 초기화 useEffect 경로 상세 로깅:*)",
       "Bash(git commit -m '디버깅: transitionToPhase와 state 전체 변화 로깅 추가:*)",
-      "Bash(git commit -m '디버깅 로그 단순화: 핵심 로그만 유지:*)"
+      "Bash(git commit -m '디버깅 로그 단순화: 핵심 로그만 유지:*)",
+      "Bash(git commit -m '디버깅: advancePhase 실행 경로 상세 로깅:*)"
     ]
   }
 }

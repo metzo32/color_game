@@ -211,22 +211,26 @@ export default function Game() {
 
   // 페이즈 전환 로직 (호스트 전용)
   const advancePhase = useCallback(() => {
-    if (!isHost) return;
+    if (!isHost) {
+      console.log('[advancePhase] not host, return');
+      return;
+    }
     const current = phaseRef.current;
     const s = stateRef.current;
 
-    console.log('[advancePhase] current phase:', current);
+    console.log('[advancePhase] current:', current, 'isHost:', isHost);
 
     switch (current) {
       case 'COLOR_REVEAL':
         // 색깔 공개(3s) → 색깔 선택(10s)
-        console.log('[advancePhase] COLOR_REVEAL → COLOR_SELECTION');
+        console.log('[advancePhase] COLOR_REVEAL 케이스 진입');
         transitionToPhase('COLOR_SELECTION', PHASE_DURATIONS.COLOR_SELECTION ?? 10);
+        console.log('[advancePhase] transitionToPhase 호출 완료');
         break;
 
       case 'COLOR_SELECTION': {
         // 색깔 선택 종료 → 호스트 픽 자동 제출 → 즉시 결과 계산 → 비교 화면(5s)
-        console.log('[advancePhase] COLOR_SELECTION → COMPARISON');
+        console.log('[advancePhase] COLOR_SELECTION 케이스 진입');
         let hostPick = currentPickColorRef.current;
         // 선택하지 않으면 기본값(회색) 사용
         if (!hostPick) {
@@ -248,6 +252,7 @@ export default function Game() {
           sendToAllRef.current('ROUND_RESULT', result);
         }
         transitionToPhase('COMPARISON', PHASE_DURATIONS.COMPARISON ?? 5);
+        console.log('[advancePhase] COMPARISON 전환 호출');
         break;
       }
 
