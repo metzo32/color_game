@@ -36,6 +36,21 @@ export default function Lobby() {
   const playerInfo = loadPlayerInfo();
   const inviteLink = gameId ? generateInviteLink(gameId) : '';
 
+  // 혼자하기 모드에서는 로비에 진입할 수 없음
+  useEffect(() => {
+    const gamePlayersRaw = sessionStorage.getItem('gamePlayers');
+    if (gamePlayersRaw) {
+      try {
+        const gamePlayers = JSON.parse(gamePlayersRaw) as Player[];
+        if (gamePlayers.length === 1) {
+          navigate('/');
+        }
+      } catch {
+        // 파싱 실패 시 진행
+      }
+    }
+  }, [navigate]);
+
   // 전체 플레이어 목록을 모든 게스트에게 브로드캐스트 (호스트 전용)
   const broadcastPlayers = useCallback((playerList: Player[]) => {
     sendToAllRef.current('GAME_STATE_SYNC', { players: playerList });
