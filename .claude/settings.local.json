@@ -18,7 +18,8 @@
       "Bash(git commit -m '디버깅: transitionToPhase와 state 전체 변화 로깅 추가:*)",
       "Bash(git commit -m '디버깅 로그 단순화: 핵심 로그만 유지:*)",
       "Bash(git commit -m '디버깅: advancePhase 실행 경로 상세 로깅:*)",
-      "Bash(git commit -m '타이머 시스템 재설계: useTimer 제거 → setTimeout 직접 관리:*)"
+      "Bash(git commit -m '타이머 시스템 재설계: useTimer 제거 → setTimeout 직접 관리:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
