@@ -43,6 +43,24 @@ export default function Result() {
 
   const { players, roundResults } = data;
 
+  // 혼자하기 모드 여부
+  const isSoloMode = players.length === 1;
+
+  // 거리의 합 계산 (혼자하기 모드용)
+  const totalDistance = isSoloMode ? roundResults.reduce((sum, result) => {
+    const myPlayerId2 = myPlayerId;
+    const myPick = result.picks[myPlayerId2];
+    if (myPick) {
+      const distance = Math.sqrt(
+        Math.pow(result.targetColor.r - myPick.r, 2) +
+        Math.pow(result.targetColor.g - myPick.g, 2) +
+        Math.pow(result.targetColor.b - myPick.b, 2)
+      );
+      return sum + distance;
+    }
+    return sum;
+  }, 0) : 0;
+
   // 점수 내림차순 정렬
   const ranked = [...players].sort((a, b) => b.score - a.score);
 
@@ -68,7 +86,7 @@ export default function Result() {
         {/* 헤더 */}
         <div className="text-center">
           <h1 className="text-4xl font-black text-white mb-2">게임 종료!</h1>
-          <p className="text-gray-500">Color Match 최종 결과</p>
+          <p className="text-gray-500">최종 결과</p>
         </div>
 
         {/* 최종 랭킹 */}
@@ -113,9 +131,11 @@ export default function Result() {
                   </p>
                 </div>
 
-                {/* 총 점수 */}
-                <div className="text-right flex-shrink-0">
-                  <p className={`text-3xl font-black ${style.text}`}>{player.score}</p>
+                {/* 총 점수 또는 거리의 합 */}
+                <div className="text-right shrink-0">
+                  <p className={`text-3xl font-black ${style.text}`}>
+                    {isSoloMode ? totalDistance.toFixed(1) : player.score}
+                  </p>
                   <p className="text-gray-600 text-xs">점</p>
                 </div>
               </div>
@@ -125,31 +145,80 @@ export default function Result() {
 
         {/* 라운드별 요약 */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <h3 className="text-gray-400 text-sm font-semibold mb-3 uppercase tracking-wider">라운드 요약</h3>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {roundResults.map((result) => {
-              const winner = players.find((p) => p.id === result.ranking[0]);
-              return (
-                <div key={result.round} className="flex items-center gap-3 py-2 border-b border-gray-800 last:border-0">
-                  <span className="text-gray-600 text-sm w-16 flex-shrink-0">Round {result.round}</span>
-                  <div
-                    className="w-6 h-6 rounded flex-shrink-0"
-                    style={{ backgroundColor: `rgb(${result.targetColor.r},${result.targetColor.g},${result.targetColor.b})` }}
-                    title={rgbToHex(result.targetColor)}
-                  />
-                  <span className="text-gray-500 text-xs font-mono">{rgbToHex(result.targetColor)}</span>
-                  <span className="flex-1" />
-                  {winner && (
-                    <div className="flex items-center gap-1">
-                      <div
-                        className="w-5 h-5 rounded-full"
-                        style={{ backgroundColor: winner.profileColor }}
-                      />
-                      <span className="text-yellow-400 text-xs font-bold">{winner.nickname}</span>
+              if (isSoloMode) {
+                // 혼자하기 모드: 문제 컬러, 선택 컬러, 거리
+                const myPick = result.picks[myPlayerId];
+                const distance = myPick
+                  ? Math.sqrt(
+                    Math.pow(result.targetColor.r - myPick.r, 2) +
+                    Math.pow(result.targetColor.g - myPick.g, 2) +
+                    Math.pow(result.targetColor.b - myPick.b, 2)
+                  ).toFixed(1)
+                  : null;
+
+                return (
+                  <div key={result.round} className="flex flex-col gap-2 pb-3 border-b border-gray-800 last:border-0">
+                    <span className="text-gray-500 text-sm font-semibold">라운드 {result.round}</span>
+                    <div className="flex items-center gap-3">
+                      {/* 문제 컬러 */}
+                      <div className="flex flex-col items-center gap-1">
+                        <div
+                          className="w-12 h-12 rounded-lg shadow-md"
+                          style={{ backgroundColor: `rgb(${result.targetColor.r},${result.targetColor.g},${result.targetColor.b})` }}
+                          title={rgbToHex(result.targetColor)}
+                        />
+                      </div>
+                      {/* 선택 컬러 */}
+                      {myPick ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <div
+                            className="w-12 h-12 rounded-lg shadow-md"
+                            style={{ backgroundColor: `rgb(${myPick.r},${myPick.g},${myPick.b})` }}
+                            title={rgbToHex(myPick)}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-gray-800 border border-dashed border-gray-700 flex items-center justify-center">
+                          <span className="text-gray-500 text-xs">미제출</span>
+                        </div>
+                      )}
+                      {/* 거리 */}
+                      <div className="flex-1 text-right">
+                        <p className="text-gray-300 text-sm font-bold">
+                          {distance ?? 'N/A'}
+                        </p>
+                        <span className="text-gray-500 text-xs">거리</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
+                  </div>
+                );
+              } else {
+                // 멀티플레이 모드: 기존 방식 (우승자 표시)
+                const winner = players.find((p) => p.id === result.ranking[0]);
+                return (
+                  <div key={result.round} className="flex items-center gap-3 py-2 border-b border-gray-800 last:border-0">
+                    <span className="text-gray-600 text-sm w-16 flex-shrink-0">Round {result.round}</span>
+                    <div
+                      className="w-6 h-6 rounded flex-shrink-0"
+                      style={{ backgroundColor: `rgb(${result.targetColor.r},${result.targetColor.g},${result.targetColor.b})` }}
+                      title={rgbToHex(result.targetColor)}
+                    />
+                    <span className="text-gray-500 text-xs font-mono">{rgbToHex(result.targetColor)}</span>
+                    <span className="flex-1" />
+                    {winner && (
+                      <div className="flex items-center gap-1">
+                        <div
+                          className="w-5 h-5 rounded-full"
+                          style={{ backgroundColor: winner.profileColor }}
+                        />
+                        <span className="text-yellow-400 text-xs font-bold">{winner.nickname}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
             })}
           </div>
         </div>
@@ -164,8 +233,8 @@ export default function Result() {
               ${voted === 'again'
                 ? 'bg-green-600 text-white'
                 : voted !== null
-                ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-lg shadow-indigo-900/40'
+                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-lg shadow-indigo-900/40'
               }
             `}
           >
@@ -179,8 +248,8 @@ export default function Result() {
               ${voted === 'leave'
                 ? 'bg-gray-600 text-white'
                 : voted !== null
-                ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                : 'bg-gray-800 hover:bg-gray-700 active:scale-95 text-white border border-gray-700'
+                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  : 'bg-gray-800 hover:bg-gray-700 active:scale-95 text-white border border-gray-700'
               }
             `}
           >
