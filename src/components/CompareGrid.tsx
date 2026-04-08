@@ -9,10 +9,10 @@ interface CompareGridProps {
 }
 
 // 순위별 강조 스타일
-const RANK_HIGHLIGHTS: Record<number, { ring: string; badge: string; label: string }> = {
-  0: { ring: 'ring-4 ring-yellow-400', badge: 'bg-yellow-400 text-gray-900', label: '1위' },
-  1: { ring: 'ring-4 ring-gray-300', badge: 'bg-gray-300 text-gray-900', label: '2위' },
-  2: { ring: 'ring-2 ring-orange-400', badge: 'bg-orange-400 text-white', label: '3위' },
+const RANK_HIGHLIGHTS: Record<number, { border: string; badge: string; label: string }> = {
+  0: { border: 'border-4 border-yellow-400', badge: 'bg-yellow-400 text-gray-900', label: '1위' },
+  1: { border: 'border-4 border-gray-300', badge: 'bg-gray-300 text-gray-900', label: '2위' },
+  2: { border: 'border-2 border-orange-400', badge: 'bg-orange-400 text-white', label: '3위' },
 };
 
 export default function CompareGrid({
@@ -44,10 +44,10 @@ export default function CompareGrid({
         {/* 헤더 행: 타겟 + 플레이어 컬럼 라벨 */}
         {/* 타겟 컬럼 헤더 */}
         <div className="flex flex-col items-center gap-2">
-          <span className="text-indigo-400 font-bold text-sm uppercase tracking-wider">타겟</span>
+          <span className="text-indigo-400 font-bold text-sm uppercase tracking-wider h-[34px]">문제</span>
           {/* 타겟 컬러 박스 */}
           <div
-            className="w-full aspect-square rounded-xl shadow-lg border-2 border-indigo-500 flex items-end justify-center pb-2"
+            className="w-full aspect-square rounded-xl shadow-lg border-2 border-indigo-500 flex items-start justify-center pt-2"
             style={{ backgroundColor: rgbToString(targetColor) }}
           >
             <div className="bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1">
@@ -68,29 +68,29 @@ export default function CompareGrid({
           return (
             <div key={player.id} className="flex flex-col items-center gap-2">
               {/* 플레이어 정보 헤더 */}
-              <div className="flex flex-col items-center gap-1">
-                {highlight && (
+              <div className="flex flex-col items-center">
+                {/* {highlight && (
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${highlight.badge}`}>
                     {highlight.label}
                   </span>
-                )}
+                )} */}
                 <div
-                  className={`w-8 h-8 rounded-full border-2 ${isMe ? 'border-white' : 'border-gray-600'}`}
+                  className={`w-5 h-5 rounded-full border-2 ${isMe ? 'border-white' : 'border-gray-600'}`}
                   style={{ backgroundColor: player.profileColor }}
                 />
                 <p className={`text-xs font-medium truncate max-w-[100px] ${isMe ? 'text-white' : 'text-gray-300'}`}>
                   {player.nickname}
-                  {isMe && ' (나)'}
+                  {/* {isMe && ' (나)'} */}
                 </p>
-                {earnedScore > 0 && (
+                {/* {earnedScore > 0 && (
                   <span className="text-yellow-400 text-xs font-bold">+{earnedScore}점</span>
-                )}
+                )} */}
               </div>
 
               {/* 플레이어 선택 컬러 박스 */}
               {pick ? (
                 <div
-                  className={`w-full aspect-square rounded-xl shadow-md flex items-end justify-center pb-2 ${highlight ? highlight.ring : ''}`}
+                  className={`w-full aspect-square rounded-xl shadow-md flex justify-center items-start pt-2 ${highlight ? highlight.border : ''}`}
                   style={{ backgroundColor: rgbToString(pick) }}
                 >
                   <div className="bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1 text-center">
@@ -104,11 +104,6 @@ export default function CompareGrid({
                 <div className="w-full aspect-square rounded-xl bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center">
                   <p className="text-gray-500 text-xs">미제출</p>
                 </div>
-              )}
-
-              {/* 순서 표시 (디버그용 - 숨겨도 됨) */}
-              {index < ranking.length && (
-                <p className="text-gray-500 text-xs">{index + 1}위</p>
               )}
             </div>
           );
