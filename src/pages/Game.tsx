@@ -20,14 +20,14 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
     const myPlayerId = sessionStorage.getItem('myPlayerId') ?? '';
     const playerInfo = sessionStorage.getItem('playerInfo');
 
-    console.log('[loadGameData] playersRaw:', playersRaw);
-    console.log('[loadGameData] myPlayerId:', myPlayerId);
-    console.log('[loadGameData] playerInfo:', playerInfo);
+    // console.log('[loadGameData] playersRaw:', playersRaw);
+    // console.log('[loadGameData] myPlayerId:', myPlayerId);
+    // console.log('[loadGameData] playerInfo:', playerInfo);
 
     // gamePlayers가 없으면 게스트이거나 단독 플레이 처음 시작
     if (!playersRaw) {
       if (!playerInfo || !myPlayerId) {
-        console.log('[loadGameData] Missing playerInfo or myPlayerId, returning null');
+        // console.log('[loadGameData] Missing playerInfo or myPlayerId, returning null');
         return null;
       }
       // 게스트: playerInfo만으로 자신 정보 구성 (플레이어 목록은 호스트 sync로 받음)
@@ -45,12 +45,12 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
         isReady: true,
         hasSubmitted: false,
       };
-      console.log('[loadGameData] Guest mode, returning:', { players: [me], myPlayerId, isHost: false });
+      // console.log('[loadGameData] Guest mode, returning:', { players: [me], myPlayerId, isHost: false });
       return { players: [me], myPlayerId, isHost: false };
     }
 
     if (!myPlayerId) {
-      console.log('[loadGameData] Missing myPlayerId, returning null');
+      // console.log('[loadGameData] Missing myPlayerId, returning null');
       return null;
     }
 
@@ -58,9 +58,9 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
     const myPlayerData = players.find((p) => p.id === myPlayerId);
     const isHost = myPlayerData?.isHost ?? false;
 
-    console.log('[loadGameData] players:', players);
-    console.log('[loadGameData] myPlayerData:', myPlayerData);
-    console.log('[loadGameData] isHost:', isHost);
+    // console.log('[loadGameData] players:', players);
+    // console.log('[loadGameData] myPlayerData:', myPlayerData);
+    // console.log('[loadGameData] isHost:', isHost);
 
     // 플레이어 목록이 비어있고 playerInfo만 있는 경우 (단독 플레이)
     if (players.length === 0 && playerInfo) {
@@ -74,11 +74,11 @@ function loadGameData(): { players: Player[]; myPlayerId: string; isHost: boolea
         isReady: true,
         hasSubmitted: false,
       };
-      console.log('[loadGameData] Single player (empty players array), returning:', { players: [singlePlayer], myPlayerId: singlePlayer.id, isHost: true });
+      // console.log('[loadGameData] Single player (empty players array), returning:', { players: [singlePlayer], myPlayerId: singlePlayer.id, isHost: true });
       return { players: [singlePlayer], myPlayerId: singlePlayer.id, isHost: true };
     }
 
-    console.log('[loadGameData] Normal case, returning:', { players, myPlayerId, isHost });
+    // console.log('[loadGameData] Normal case, returning:', { players, myPlayerId, isHost });
     return { players, myPlayerId, isHost };
   } catch (error) {
     console.error('[loadGameData] Error:', error);
@@ -172,7 +172,7 @@ export default function Game() {
   const [timerTotal, setTimerTotal] = useState(0);
 
   // advancePhase를 ref로 추적 (stale closure 방지)
-  const advancePhaseRef = useRef<() => void>(() => {});
+  const advancePhaseRef = useRef<() => void>(() => { });
 
   // 현재 페이즈를 ref로도 관리 (stale closure 방지)
   const phaseRef = useRef<GamePhase>('WAITING');
@@ -193,7 +193,7 @@ export default function Game() {
   const currentPickColorRef = useRef<RGB | null>(null);
 
   // sendToAll을 ref로 관리하여 stale closure 방지
-  const sendToAllRef = useRef<(type: PeerMessage['type'], payload: unknown) => void>(() => {});
+  const sendToAllRef = useRef<(type: PeerMessage['type'], payload: unknown) => void>(() => { });
 
   // state를 직접 참조하지 않고 ref를 통해 최신값 접근 (advancePhase stale closure 방지)
   const stateRef = useRef(state);
@@ -447,8 +447,8 @@ export default function Game() {
         // phase 'WAITING' 유지 — 연결 감시 useEffect가 COLOR_REVEAL로 전환
       }
     }
-  // 마운트 시 1회만 실행
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // 마운트 시 1회만 실행
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 멀티플레이 전용: 예상 게스트 수 (호스트 본인 제외)
@@ -505,7 +505,7 @@ export default function Game() {
       const msg = createPeerMessage('PLAYER_JOIN', me, myId);
       conn.send(msg);
     }).catch(console.error);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost, gameId]);
 
   // 컬러피커 실시간 색상 변경
@@ -546,36 +546,62 @@ export default function Game() {
           </p>
         </div>
 
-        <PhaseLabel phase={phase} />
+        <div className="flex items-center gap-6">
+          <PhaseLabel phase={phase} />
+          {/* 타이머: FINISHED, WAITING일 때 숨김 */}
+          {phase !== 'FINISHED' && phase !== 'WAITING' && (
+            <Timer
+              timeLeft={timeLeft}
+              total={timerTotal}
+              isTimeUp={false}
+            />
+          )}
+        </div>
 
-        {/* 타이머: FINISHED, WAITING일 때 숨김 */}
-        {phase !== 'FINISHED' && phase !== 'WAITING' ? (
-          <Timer
-            timeLeft={timeLeft}
-            total={timerTotal}
-            isTimeUp={false}
-          />
-        ) : (
-          <div className="w-16 h-16" />
-        )}
+        <div className="w-16" />
       </header>
 
-      {/* 2라운드부터 우상단 현재 랭킹 */}
+      {/* 2라운드부터 우상단 현재 랭킹 또는 거리 기록 */}
       {state.currentRound >= 2 && phase !== 'WAITING' && phase !== 'FINISHED' && (
         <div className="fixed top-20 right-4 z-30 bg-gray-900/90 backdrop-blur-sm border border-gray-700 rounded-xl p-3 min-w-[150px]">
-          <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-2 font-semibold">순위</p>
-          {[...state.players]
-            .sort((a, b) => b.score - a.score)
-            .map((player, i) => (
-              <div
-                key={player.id}
-                className={`flex items-center gap-2 py-0.5 ${player.id === myPlayerId ? 'text-indigo-400' : 'text-gray-300'}`}
-              >
-                <span className="text-xs w-3 shrink-0 text-gray-500">{i + 1}</span>
-                <span className="text-xs flex-1 truncate max-w-[80px]">{player.nickname}</span>
-                <span className="text-xs font-bold">{player.score}pt</span>
+          {state.players.length === 1 ? (
+            <>
+              <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-2 font-semibold">거리 기록</p>
+              <div className="space-y-1">
+                {state.roundResults.map((result) => {
+                  const myPick = result.picks[myPlayerId];
+                  const distance = myPick && result.targetColor ?
+                    Math.sqrt(
+                      Math.pow(result.targetColor.r - myPick.r, 2) +
+                      Math.pow(result.targetColor.g - myPick.g, 2) +
+                      Math.pow(result.targetColor.b - myPick.b, 2)
+                    ).toFixed(1) : null;
+                  return (
+                    <div key={result.round} className="flex items-center justify-between text-gray-300">
+                      <span className="text-xs text-gray-500">{result.round}R</span>
+                      <span className="text-xs font-mono font-bold">{distance ?? 'N/A'}</span>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            </>
+          ) : (
+            <>
+              <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-2 font-semibold">순위</p>
+              {[...state.players]
+                .sort((a, b) => b.score - a.score)
+                .map((player, i) => (
+                  <div
+                    key={player.id}
+                    className={`flex items-center gap-2 py-0.5 ${player.id === myPlayerId ? 'text-indigo-400' : 'text-gray-300'}`}
+                  >
+                    <span className="text-xs w-3 shrink-0 text-gray-500">{i + 1}</span>
+                    <span className="text-xs flex-1 truncate max-w-[80px]">{player.nickname}</span>
+                    <span className="text-xs font-bold">{player.score}pt</span>
+                  </div>
+                ))}
+            </>
+          )}
         </div>
       )}
 
@@ -604,7 +630,7 @@ export default function Game() {
             <p className="text-gray-400 text-base">방금 본 색깔을 선택하세요 — 타이머 종료 시 자동 제출</p>
             {/* 실시간 컬러 프리뷰 */}
             <div
-              className="w-[min(480px,85vw)] h-[min(300px,35vh)] rounded-2xl border-2 border-gray-700 transition-colors duration-75 shadow-lg"
+              className="w-[min(800px,90vw)] h-[min(800px,90vw)] max-h-[60vh] rounded-2xl shadow-2xl flex items-end justify-center pb-6 transition-all duration-500"
               style={{
                 backgroundColor: currentPickColor
                   ? `rgb(${currentPickColor.r},${currentPickColor.g},${currentPickColor.b})`
@@ -688,7 +714,7 @@ export default function Game() {
 
                     {/* 프로필 원형 */}
                     <div
-                      className="w-12 h-12 rounded-full flex-shrink-0 border-2 border-gray-600"
+                      className="w-12 h-12 rounded-full shrink-0 border-2 border-gray-600"
                       style={{ backgroundColor: player.profileColor }}
                     />
 
@@ -780,14 +806,14 @@ export default function Game() {
 // 페이즈별 레이블 표시 컴포넌트
 function PhaseLabel({ phase }: { phase: GamePhase }) {
   const labels: Record<GamePhase, { text: string; color: string }> = {
-    WAITING:         { text: '대기 중',      color: 'text-gray-400' },
-    COLOR_REVEAL:    { text: '색깔 공개',    color: 'text-blue-400' },
-    COLOR_SELECTION: { text: '색깔 선택',    color: 'text-indigo-400' },
-    TIME_UP:         { text: '결과 비교',    color: 'text-yellow-400' }, // 미사용 (호환성)
-    COMPARISON:      { text: '결과 비교',    color: 'text-yellow-400' },
-    SCORING:         { text: '점수 계산',    color: 'text-green-400' },
-    NEXT_ROUND:      { text: '다음 라운드',  color: 'text-purple-400' },
-    FINISHED:        { text: '게임 종료',    color: 'text-white' },
+    WAITING: { text: '대기 중', color: 'text-gray-400' },
+    COLOR_REVEAL: { text: '색깔 공개', color: 'text-blue-400' },
+    COLOR_SELECTION: { text: '색깔 선택', color: 'text-indigo-400' },
+    TIME_UP: { text: '결과 비교', color: 'text-yellow-400' }, // 미사용 (호환성)
+    COMPARISON: { text: '결과 비교', color: 'text-yellow-400' },
+    SCORING: { text: '점수 계산', color: 'text-green-400' },
+    NEXT_ROUND: { text: '다음 라운드', color: 'text-purple-400' },
+    FINISHED: { text: '게임 종료', color: 'text-white' },
   };
   const { text, color } = labels[phase];
   return <span className={`font-bold text-base ${color}`}>{text}</span>;
