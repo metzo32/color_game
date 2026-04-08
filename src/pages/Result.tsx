@@ -31,6 +31,7 @@ export default function Result() {
   const [myPlayerId] = useState(() => sessionStorage.getItem('myPlayerId') ?? '');
   const [data] = useState(loadResults);
   const [voted, setVoted] = useState<'again' | 'leave' | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // 데이터 없으면 홈으로
   useEffect(() => {
@@ -61,6 +62,81 @@ export default function Result() {
     return sum;
   }, 0) : 0;
 
+  // 가장 작은 거리값 계산 (혼자하기 모드용)
+  const minDistance = isSoloMode ? Math.min(
+    ...roundResults
+      .map((result) => {
+        const myPick = result.picks[myPlayerId];
+        if (myPick) {
+          return Math.sqrt(
+            Math.pow(result.targetColor.r - myPick.r, 2) +
+            Math.pow(result.targetColor.g - myPick.g, 2) +
+            Math.pow(result.targetColor.b - myPick.b, 2)
+          );
+        }
+        return Infinity;
+      })
+      .filter((d) => d !== Infinity)
+  ) : Infinity;
+
+  // 메타데이터 설정 (혼자하기 모드 공유용)
+  useEffect(() => {
+    if (isSoloMode && minDistance !== Infinity) {
+      const description = `${minDistance.toFixed(1)}점? 나보다 색감 좋은 사람 덤벼보세요!`;
+
+      // 가장 적은 거리에 해당하는 라운드 찾기
+      let minDistanceRound = roundResults[0];
+      let minDist = Infinity;
+      for (const result of roundResults) {
+        const myPick = result.picks[myPlayerId];
+        if (myPick) {
+          const distance = Math.sqrt(
+            Math.pow(result.targetColor.r - myPick.r, 2) +
+            Math.pow(result.targetColor.g - myPick.g, 2) +
+            Math.pow(result.targetColor.b - myPick.b, 2)
+          );
+          if (distance < minDist) {
+            minDist = distance;
+            minDistanceRound = result;
+          }
+        }
+      }
+
+      // 선택 컬러로 이미지 생성
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200;
+      canvas.height = 630;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const myPick = minDistanceRound.picks[myPlayerId];
+        if (myPick) {
+          ctx.fillStyle = `rgb(${myPick.r},${myPick.g},${myPick.b})`;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      const imageUrl = canvas.toDataURL('image/png');
+
+      // OG 메타데이터 업데이트
+      const updateMetaTag = (property: string, content: string) => {
+        let tag = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement;
+        if (!tag) {
+          tag = document.createElement('meta');
+          tag.setAttribute('property', property);
+          document.head.appendChild(tag);
+        }
+        tag.content = content;
+      };
+
+      updateMetaTag('og:title', '색깔 맞추기');
+      updateMetaTag('og:description', description);
+      updateMetaTag('og:type', 'website');
+      updateMetaTag('og:image', imageUrl);
+      updateMetaTag('og:image:width', '1200');
+      updateMetaTag('og:image:height', '630');
+    }
+  }, [isSoloMode, minDistance, roundResults, myPlayerId]);
+
   // 점수 내림차순 정렬
   const ranked = [...players].sort((a, b) => b.score - a.score);
 
@@ -78,6 +154,18 @@ export default function Result() {
     setVoted('leave');
     sessionStorage.clear();
     setTimeout(() => navigate('/'), 300);
+  };
+
+  const handleShare = async () => {
+    const shareUrl = window.location.href;
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      alert('링크 복사에 실패했습니다.');
+    }
   };
 
   return (
@@ -224,12 +312,29 @@ export default function Result() {
         </div>
 
         {/* 액션 버튼 */}
-        <div className="flex gap-3">
+        <div className={`flex gap-3 `}>
+          {isSoloMode && minDistance !== Infinity && (
+            <button
+              onClick={handleShare}
+              disabled={voted !== null || copied}
+              className={`
+                w-full py-4 rounded-2xl font-bold text-base transition-all
+                ${copied
+                  ? 'bg-green-600 text-white'
+                  : voted !== null
+                    ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                    : 'bg-blue-400 hover:bg-blue-500 active:scale-95 text-white shadow-lg shadow-blue-900/40'
+                }
+              `}
+            >
+              {copied ? '✓ 복사됨' : '공유하기'}
+            </button>
+          )}
           <button
             onClick={handlePlayAgain}
             disabled={voted !== null}
             className={`
-              flex-1 py-4 rounded-2xl font-bold text-base transition-all
+              ${isSoloMode && minDistance !== Infinity ? 'w-full' : 'flex-1'} py-4 rounded-2xl font-bold text-base transition-all
               ${voted === 'again'
                 ? 'bg-green-600 text-white'
                 : voted !== null
@@ -244,7 +349,7 @@ export default function Result() {
             onClick={handleLeave}
             disabled={voted !== null}
             className={`
-              flex-1 py-4 rounded-2xl font-bold text-base transition-all
+              ${isSoloMode && minDistance !== Infinity ? 'w-full' : 'flex-1'} py-4 rounded-2xl font-bold text-base transition-all
               ${voted === 'leave'
                 ? 'bg-gray-600 text-white'
                 : voted !== null
