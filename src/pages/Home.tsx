@@ -33,6 +33,14 @@ export default function Home() {
   const handleModeChange = useCallback((newMode: Mode) => {
     setMode(newMode);
     setErrors({});
+    // 취소할 때만 폼 초기화
+    if (newMode === 'idle' || newMode === 'multi') {
+      setForm({
+        nickname: '',
+        profileColor: PRESET_COLORS[0],
+        inviteCode: '',
+      });
+    }
   }, []);
 
   // 유효성 검사
@@ -117,7 +125,7 @@ export default function Home() {
 
       <div className="relative z-10 w-full max-w-md flex flex-col items-center gap-8">
         {/* 타이틀 */}
-        <div className="text-center space-y-2">
+        <div className="text-center flex flex-col gap-4">
           <h1 className="text-5xl font-black text-white mb-2 tracking-tight">
             색깔 맻추기
           </h1>
@@ -133,14 +141,14 @@ export default function Home() {
               onClick={() => handleModeChange('solo')}
               className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all shadow-lg shadow-indigo-900/40"
             >
-              혼자하기
+              시작하기
             </button>
-            <button
+            {/* <button
               onClick={() => handleModeChange('multi')}
               className="w-full py-4 bg-gray-800 hover:bg-gray-700 active:scale-95 text-white font-bold text-lg rounded-2xl transition-all border border-gray-700"
             >
               함께하기
-            </button>
+            </button> */}
           </div>
         )}
 
@@ -174,14 +182,8 @@ export default function Home() {
             {/* 폼 헤더 */}
             <div className="flex items-center justify-between">
               <h2 className="text-white font-bold text-lg">
-                {mode === 'solo' ? '혼자하기' : (mode === 'create' ? '게임 만들기' : '게임 참여하기')}
+                {mode === 'solo' ? '' : (mode === 'create' ? '게임 만들기' : '게임 참여하기')}
               </h2>
-              <button
-                onClick={() => handleModeChange(mode === 'solo' ? 'idle' : 'multi')}
-                className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
-              >
-                취소
-              </button>
             </div>
 
             {/* 닉네임 입력 */}
@@ -267,6 +269,15 @@ export default function Home() {
               {mode === 'solo' ? '게임 시작' : (mode === 'create' ? '방 만들기' : '참여하기')}
             </button>
           </div>
+        )}
+
+        {(mode === 'solo' || mode === 'create' || mode === 'join') && (
+          <button
+            onClick={() => handleModeChange(mode === 'solo' ? 'idle' : 'multi')}
+            className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
+          >
+            취소
+          </button>
         )}
 
         {/* 게임 설명 */}
